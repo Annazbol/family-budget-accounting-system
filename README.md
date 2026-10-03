@@ -1,1 +1,1 @@
-# family-budget-accounting-system
+# Система учёта семейного бюджета

@@ -1,25 +1,39 @@
 import { useEffect, useState } from 'react'
+import { AuthUser, fetchMe, getStoredUser, logout as authLogout } from './auth'
 import { useI18n } from './i18n'
 import { Notice, NotificationsSheet, loadRead, saveRead, useNotices } from './Notifications'
 import { Debts, Goals, Home, Loans, Operations } from './pages'
-import { Profile, ProfileSheet, Welcome, initials, loadProfile, saveProfile } from './Profile'
+import { ProfileSheet, LoginScreen, initials } from './Profile'
+import RatesBanner from './RatesBanner'
 import { TabId } from './types'
 
-// id вкладки совпадает с ключом перевода
 const TABS = [['home', Home], ['operations', Operations], ['goals', Goals], ['debts', Debts], ['loans', Loans]] as const
 
 export default function App() {
   const { t } = useI18n()
   const [tab, setTab] = useState<TabId>('home')
   const [profileOpen, setProfileOpen] = useState(false)
-  const [profile, setProfile] = useState<Profile | null>(loadProfile)
+  const [user, setUser] = useState<AuthUser | null>(getStoredUser)
+  const [booting, setBooting] = useState(() => !!getStoredUser())
   const [read, setRead] = useState<string[]>(loadRead)
-  const [bell, setBell] = useState<string[] | null>(null) // null — закрыто; иначе список прочитанных на момент открытия
-  const [hl, setHl] = useState<string | null>(null) // объект, который нужно подсветить после перехода
-  const notices = useNotices(`${tab}:${bell !== null}`)
+  const [bell, setBell] = useState<string[] | null>(null)
+  const [hl, setHl] = useState<string | null>(null)
+  const notices = useNotices()
   const unread = notices.filter((n) => !read.includes(n.id)).length
 
-  // Открытие уведомлений помечает все текущие как прочитанные; внутри окна новые ещё видны.
+  // При старте проверяем токен через GET /auth/me (мок или бэкенд)
+  useEffect(() => {
+    if (!booting) return
+    let cancelled = false
+    fetchMe().then((u) => {
+      if (!cancelled) {
+        setUser(u)
+        setBooting(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [booting])
+
   const openBell = () => {
     setBell(read)
     const ids = notices.map((n) => n.id)
@@ -28,7 +42,6 @@ export default function App() {
   }
   const go = (n: Notice) => { setBell(null); setTab(n.tab); setHl(n.hl) }
 
-  // Ждём, пока страница загрузит данные, затем прокручиваем к объекту и подсвечиваем его.
   useEffect(() => {
     if (!hl) return
     let tries = 0
@@ -45,14 +58,33 @@ export default function App() {
     return () => clearInterval(iv)
   }, [hl])
 
-  const update = (p: Profile | null) => { saveProfile(p); setProfile(p) }
-  if (!profile) return <Welcome onDone={update} />
+  const onLogin = (u: { name: string; email: string }) => {
+    // полный user уже в localStorage после login(); подтянем из storage
+    setUser(getStoredUser() ?? { id: 0, name: u.name, email: u.email, login: '' })
+  }
+
+  const onLogout = async () => {
+    setProfileOpen(false)
+    await authLogout()
+    setUser(null)
+  }
+
+  if (booting) {
+    return (
+      <div id="app">
+        <main><p className="mut">{t('loading')}</p></main>
+      </div>
+    )
+  }
+
+  if (!user) return <LoginScreen onDone={onLogin} />
+
   const Page = TABS.find((x) => x[0] === tab)![1]
   return (
     <div id="app">
       <header>
         <button className="av" aria-label={t('profile')} aria-haspopup="dialog" onClick={() => setProfileOpen(true)}>
-          {initials(profile.name)}
+          {initials(user.name)}
         </button>
         <h1>{t('appTitle')}</h1>
         <button className="bell" aria-label={t('notifications')} aria-haspopup="dialog" onClick={openBell}>
@@ -60,8 +92,8 @@ export default function App() {
         </button>
       </header>
       {profileOpen && (
-        <ProfileSheet profile={profile} onClose={() => setProfileOpen(false)}
-          onLogout={() => { setProfileOpen(false); update(null) }} />
+        <ProfileSheet profile={{ name: user.name, email: user.email }} onClose={() => setProfileOpen(false)}
+          onLogout={onLogout} />
       )}
       {bell !== null && (
         <NotificationsSheet items={notices} isNew={(id) => !bell.includes(id)} onGo={go} onClose={() => setBell(null)} />
@@ -71,7 +103,7 @@ export default function App() {
           <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{t(id)}</button>
         ))}
       </nav>
-      <main><Page /></main>
+      <main><RatesBanner /><Page /></main>
     </div>
   )
 }

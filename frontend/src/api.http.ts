@@ -1,11 +1,11 @@
 import { ApiError } from './apiError'
-import { clearSession, getToken } from './auth'
+import { getToken, notifyUnauthorized } from './auth'
 
 const BASE: string = import.meta.env.VITE_API_BASE || '/api'
 
 /**
- * Запросы к настоящему серверу. Контракт — docs/API.md.
- * Подставляет Authorization: Bearer <token>, при 401 сбрасывает сессию.
+ * Запросы к серверу.
+ * credentials: 'include' — httpOnly cookie; плюс Bearer из sessionStorage.
  */
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
@@ -17,13 +17,13 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   let r: Response
   try {
-    r = await fetch(BASE + path, { ...init, headers })
+    r = await fetch(BASE + path, { ...init, headers, credentials: 'include' })
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e
     throw new ApiError(0, 'network')
   }
   if (r.status === 401) {
-    clearSession()
+    notifyUnauthorized()
     throw new ApiError(401, 'unauthorized')
   }
   if (!r.ok) throw new ApiError(r.status, r.statusText)

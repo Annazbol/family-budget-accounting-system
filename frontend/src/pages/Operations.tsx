@@ -9,6 +9,7 @@ import Seg from '../Seg'
 import { today } from '../shared/dates'
 import { ccyField } from '../shared/fields'
 import { PeriodPicker, periodQuery, usePeriod } from '../shared/period'
+import { categoryLabel, operationTitle } from '../shared/labels'
 import { Category, Kind, Operation } from '../types'
 
 export function Operations() {
@@ -20,7 +21,10 @@ export function Operations() {
   const [showCats, setShowCats] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
 
-  const catName = (id: number) => cats.find((c) => c.id === id)?.name ?? '—'
+  const catName = (id: number) => {
+    const n = cats.find((c) => c.id === id)?.name
+    return n ? categoryLabel(n, t) : '—'
+  }
   const sign = (k: Kind) => (k === 'i' ? '+' : '−')
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
   const kinds = [{ value: 'i', label: t('incomeOne') }, { value: 'e', label: t('expenseOne') }]
@@ -56,8 +60,8 @@ export function Operations() {
         row={(o) => (
           <div className="opr">
             <div className="grow">
-              <b>{o.name || catName(o.category_id)}</b>
-              <div className="mut">{o.name && catName(o.category_id) + ' · '}{date(o.date)}{o.note && ' · ' + o.note}</div>
+              <b>{o.locked ? '🔒 ' : ''}{operationTitle(o, t) || catName(o.category_id)}</b>
+              <div className="mut">{catName(o.category_id)} · {date(o.date)}</div>
             </div>
             <div className="amt">
               <b className={o.type === 'i' ? 'inc' : 'exp'}>{sign(o.type)}{money(opM(o))}<Warn show={!canOp(o)} /></b>

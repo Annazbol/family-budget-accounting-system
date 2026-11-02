@@ -42,7 +42,7 @@ const SEED: Store = {
     { id: 13, direction: 'owed', amount: 5000, currency: 'RUB', due: daysFromNow(30), note: 'Вернут за билеты' },
   ],
   loans: [
-    { id: 14, name: 'Ипотека', initial: 3500000, current: 2800000, rate: 12.5, payment: 42000, currency: 'RUB', day: 15 },
+    { id: 14, name: 'Ипотека', amount: 3500000, rate: 12.5, paid: 700000, start_date: daysAgo(365), term_months: 240, currency: 'RUB' },
   ],
 }
 
@@ -75,10 +75,17 @@ function normalize(raw: unknown): Store {
       : structuredClone(SEED[k])) as Store[K]
   const base = {
     categories: list('categories', (c) => c),
-    operations: list('operations', (o) => ({ ...o, name: o.name ?? '', currency: o.currency ?? 'RUB', note: o.note ?? '' })),
+    operations: list('operations', (o) => ({ ...o, name: o.name ?? '', currency: o.currency ?? 'RUB', note: o.note ?? '', locked: !!o.locked, source_type: o.source_type ?? null, source_id: o.source_id ?? null })),
     goals: list('goals', (g) => ({ ...g, saved: g.saved ?? 0, currency: g.currency ?? 'RUB' })),
     debts: list('debts', (d) => ({ ...d, note: d.note ?? '', currency: d.currency ?? 'RUB' })),
-    loans: list('loans', (l) => ({ ...l, day: l.day ?? 1, currency: l.currency ?? 'RUB' })),
+    loans: list('loans', (l) => ({
+      ...l,
+      amount: l.amount ?? l.initial ?? 0,
+      paid: l.paid ?? (l.initial != null && l.current != null ? Math.max(0, Number(l.initial) - Number(l.current)) : 0),
+      start_date: l.start_date ?? daysAgo(30),
+      term_months: l.term_months ?? 12,
+      currency: l.currency ?? 'RUB',
+    })),
   }
   const ids = COLLECTIONS.flatMap((c) => (base[c] as { id: number }[]).map((x) => Number(x.id) + 1))
   return { ...base, nextId: Math.max(Number(r.nextId) || 1, ...ids) }
@@ -157,13 +164,14 @@ const SCHEMAS: Record<Collection, (b: Rec) => Rec> = {
     currency: pick(b.currency ?? 'RUB', CURRENCIES), due: isoDate(b.due), note: str(b.note ?? '', 0, 255),
   }),
   loans: (b) => ({
-    name: str(b.name, 1, 100), initial: amount(b.initial), current: amount(b.current, { allowZero: true }),
-    rate: amount(b.rate, { allowZero: true, max: 100 }), payment: amount(b.payment),
-    currency: pick(b.currency ?? 'RUB', CURRENCIES), day: int(b.day ?? 1, 1, 28),
+    name: str(b.name, 1, 100), amount: amount(b.amount),
+    rate: amount(b.rate, { allowZero: true, max: 100 }), paid: amount(b.paid ?? 0, { allowZero: true }),
+    start_date: isoDate(b.start_date), term_months: int(b.term_months, 1, 600),
+    currency: pick(b.currency ?? 'RUB', CURRENCIES),
   }),
 }
 // Правило между полями: текущая задолженность не больше первоначальной суммы (422, как model_validator на бэкенде).
-const LOAN_CHECK = (d: Rec) => { if (d.current > d.initial) throw bad() }
+const LOAN_CHECK = (d: Rec) => { if (d.paid > d.amount * 3) throw bad() }
 
 /**
  * Бизнес-правила (см. docs/API.md): категория операции должна существовать (409) и подходить по типу (422);
@@ -219,7 +227,7 @@ function delay(ms = 80): Promise<void> {
 }
 
 function mockRates(): RatesData {
-  const BASE: Record<string, number> = { USD: 1, EUR: 0.92, RUB: 95, KZT: 480, BYN: 3.3 }
+  const BASE: Record<string, number> = { RUB: 1, USD: 1/95, EUR: 0.92/95, KZT: 480/95, BYN: 3.3/95 }
   const today = new Date()
   const history: Record<string, Record<string, number>> = {}
   for (let n = 0; n < 366; n++) {
@@ -317,6 +325,57 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     if (method === 'GET') return mockRates() as T
   }
 
+
+
+  // POST /goals/{id}/contribute и POST /loans/{id}/pay — пополнение + locked-расход из баланса
+  if (method === 'POST' && body && typeof body.amount !== 'undefined') {
+    const parts = pathname.replace(/^\//, '').split('/')
+    if (parts.length === 3 && (parts[2] === 'contribute' || parts[2] === 'pay')) {
+      const colName = parts[0]
+      const id = Number(parts[1])
+      if ((colName === 'goals' && parts[2] === 'contribute') || (colName === 'loans' && parts[2] === 'pay')) {
+        const list = store[colName as 'goals' | 'loans'] as { id: number; [k: string]: any }[]
+        const idx = list.findIndex((x) => x.id === id)
+        if (idx < 0) throw new ApiError(404, 'not found')
+        const add = amount(body.amount)
+        const todayIso = new Date().toLocaleDateString('sv')
+        const ensureCat = (name: string) => {
+          let c = store.categories.find((x) => x.type === 'e' && x.name === name)
+          if (!c) {
+            c = { id: store.nextId++, type: 'e' as const, name }
+            store.categories.push(c)
+          }
+          return c
+        }
+        if (colName === 'goals') {
+          const g = list[idx] as { name: string; target: number; saved: number; currency: string }
+          const next = Math.round((Number(g.saved) + add) * 100) / 100
+          if (next > Number(g.target)) throw bad()
+          const cat = ensureCat('system.goals')
+          store.operations.push({
+            id: store.nextId++, type: 'e', name: `goal:${id}`, amount: add,
+            currency: g.currency || 'RUB', date: todayIso, category_id: cat.id, note: g.name, locked: true,
+            source_type: 'goal', source_id: id,
+          })
+          list[idx] = { ...list[idx], saved: next }
+        } else {
+          const l = list[idx] as { name: string; amount: number; paid: number; currency: string }
+          const next = Math.round((Number(l.paid) + add) * 100) / 100
+          if (next > Number(l.amount) * 3) throw bad()
+          const cat = ensureCat('system.loans')
+          store.operations.push({
+            id: store.nextId++, type: 'e', name: `loan:${id}`, amount: add,
+            currency: l.currency || 'RUB', date: todayIso, category_id: cat.id, note: l.name, locked: true,
+            source_type: 'loan', source_id: id,
+          })
+          list[idx] = { ...list[idx], paid: next }
+        }
+        saveStore(store)
+        return list[idx] as T
+      }
+    }
+  }
+
   const col = collectionOf(pathname)
   if (!col) throw new ApiError(404, 'not found')
 
@@ -347,8 +406,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const data = SCHEMAS[col](body ?? {}) // как на сервере: 422 приходит раньше, чем 404
     const idx = list.findIndex((x) => x.id === id)
     if (idx < 0) throw new ApiError(404, 'not found')
+    if (col === 'operations' && (list[idx] as { locked?: boolean }).locked) throw new ApiError(409, 'integrity')
     checkRules(col, data, list[idx])
-    list[idx] = { ...data, id } // PUT заменяет запись целиком
+    list[idx] = { ...data, id, locked: !!(list[idx] as { locked?: boolean }).locked } // PUT заменяет запись целиком
     saveStore(store)
     return list[idx] as T
   }
@@ -356,6 +416,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (method === 'DELETE' && id !== null) {
     const idx = list.findIndex((x) => x.id === id)
     if (idx < 0) throw new ApiError(404, 'not found')
+    if (col === 'operations' && (list[idx] as { locked?: boolean }).locked) throw new ApiError(409, 'integrity')
     // Категорию с операциями удалить нельзя (ondelete="RESTRICT" в базе).
     if (col === 'categories' && store.operations.some((o) => o.category_id === id)) throw new ApiError(409, 'integrity')
     list.splice(idx, 1)

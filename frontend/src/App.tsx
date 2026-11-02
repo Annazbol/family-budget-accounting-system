@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { AuthUser, fetchMe, getStoredUser, logout as authLogout } from './auth'
+import { AuthUser, fetchMe, getStoredUser, logout as authLogout, onUnauthorized } from './auth'
+import { clearAll } from './data'
 import { useI18n } from './i18n'
 import { Notice, NotificationsSheet, loadRead, saveRead, useNotices } from './Notifications'
 import { Debts, Goals, Home, Loans, Operations } from './pages'
@@ -34,6 +35,14 @@ export default function App() {
     return () => { cancelled = true }
   }, [booting])
 
+  // Любой 401 с API → выход на экран входа
+  useEffect(() => onUnauthorized(() => {
+    clearAll()
+    setUser(null)
+    setProfileOpen(false)
+    setBell(null)
+  }), [])
+
   const openBell = () => {
     setBell(read)
     const ids = notices.map((n) => n.id)
@@ -66,6 +75,7 @@ export default function App() {
   const onLogout = async () => {
     setProfileOpen(false)
     await authLogout()
+    clearAll() // сброс кэша списков — следующий пользователь не увидит чужие данные
     setUser(null)
   }
 

@@ -41,6 +41,7 @@ export default function Resource<T extends { id: number }>(props: {
   renderItems?: (items: T[], renderItem: (item: T) => ReactNode) => ReactNode
   onChange?: () => void
   footer?: ReactNode // дополнительные кнопки под кнопкой добавления
+  itemActions?: (item: T) => ReactNode // доп. кнопки в строке (внести платёж и т.п.)
 }) {
   const { path, fields, defaults, row, check, onChange } = props
   const { t, err: errText } = useI18n()
@@ -113,8 +114,13 @@ export default function Resource<T extends { id: number }>(props: {
   const renderItem = (it: T) => (
     <div className="li" key={it.id} data-hl={`${path.slice(1)}:${it.id}`}>
       <div className="grow">{row(it)}</div>
-      <button className="ic" aria-label={t('edit')} onClick={() => setForm({ ...(it as unknown as Form) })}>✎</button>
-      <button className="ic" aria-label={t('delete')} onClick={() => setToDelete(it)}>✕</button>
+      {props.itemActions?.(it)}
+      {!(it as { locked?: boolean }).locked && (
+        <button className="ic" aria-label={t('edit')} onClick={() => setForm({ ...(it as unknown as Form) })}>✎</button>
+      )}
+      {!(it as { locked?: boolean }).locked && (
+        <button className="ic" aria-label={t('delete')} onClick={() => setToDelete(it)}>✕</button>
+      )}
     </div>
   )
 

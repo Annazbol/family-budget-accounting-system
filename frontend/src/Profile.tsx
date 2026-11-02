@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api } from './api'
-import { login } from './auth'
-import { Calc, Csv, LOCALE, Theme, useI18n } from './i18n'
+import { login, registerStart, registerConfirm, registerResend } from './auth'
+import { Calc, LOCALE, Theme, useI18n } from './i18n'
 import { useRates } from './rates'
 import Seg from './Seg'
 import { CURRENCIES, Category, Currency, Operation } from './types'
@@ -19,15 +19,21 @@ export function saveProfile(p: Profile | null) {
 export const initials = (n: string) =>
   n.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase() || '?'
 
-/** Экран входа: логин (email / ник / имя) + пароль → POST /auth/login. */
+/** Экран входа / регистрации с подтверждением email. */
 export function LoginScreen({ onDone }: { onDone: (u: { name: string; email: string }) => void }) {
   const { t, err: errText } = useI18n()
+  const [mode, setMode] = useState<'login' | 'register' | 'code'>('login')
   const [loginValue, setLoginValue] = useState('')
   const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [regLogin, setRegLogin] = useState('')
+  const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [devCode, setDevCode] = useState<string | null>(null)
 
-  const go = async (e: FormEvent) => {
+  const goLogin = async (e: FormEvent) => {
     e.preventDefault()
     const loginTrim = loginValue.trim()
     if (!loginTrim) return setError(t('loginRequired'))
@@ -44,26 +50,133 @@ export function LoginScreen({ onDone }: { onDone: (u: { name: string; email: str
     }
   }
 
+  const goRegister = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return setError(t('nameRequired'))
+    if (!regLogin.trim()) return setError(t('loginRequired'))
+    if (!email.trim()) return setError(t('loginRequired'))
+    if (!password || password.length < 6) return setError(t('passwordRequired'))
+    setBusy(true)
+    setError('')
+    setDevCode(null)
+    try {
+      const res = await registerStart({
+        email: email.trim(),
+        login: regLogin.trim(),
+        name: name.trim(),
+        password,
+      })
+      setEmail(res.email)
+      if (res.dev_code) setDevCode(res.dev_code)
+      setMode('code')
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const goConfirm = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!code.trim()) return setError(t('regCodeRequired'))
+    setBusy(true)
+    setError('')
+    try {
+      const { user } = await registerConfirm(email, code)
+      onDone({ name: user.name, email: user.email })
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const goResend = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await registerResend(email)
+      if (res.dev_code) setDevCode(res.dev_code)
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div id="app">
       <main>
-        <form className="card" onSubmit={go}>
-          <h1>{t('welcome')}</h1>
-          <p className="mut">{t('welcomeText')}</p>
-          <label>{t('loginLabel')}
-            <input value={loginValue} autoFocus autoComplete="username"
-              onChange={(e) => setLoginValue(e.target.value)} />
-          </label>
-          <label>{t('passwordLabel')}
-            <input type="password" value={password} autoComplete="current-password"
-              onChange={(e) => setPassword(e.target.value)} />
-          </label>
-          {error && <p className="err" role="alert">{error}</p>}
-          <p className="mut"><small>{t('loginHint')}</small></p>
-          <div className="acts">
-            <button className="pri wide" type="submit" disabled={busy}>{t('start')}</button>
-          </div>
-        </form>
+        {mode === 'login' && (
+          <form className="card" onSubmit={goLogin}>
+            <h1>{t('welcome')}</h1>
+            <p className="mut">{t('welcomeText')}</p>
+            <label>{t('loginLabel')}
+              <input value={loginValue} autoFocus autoComplete="username"
+                onChange={(e) => setLoginValue(e.target.value)} />
+            </label>
+            <label>{t('passwordLabel')}
+              <input type="password" value={password} autoComplete="current-password"
+                onChange={(e) => setPassword(e.target.value)} />
+            </label>
+            {error && <p className="err" role="alert">{error}</p>}
+            <div className="acts">
+              <button className="pri wide" type="submit" disabled={busy}>{t('start')}</button>
+              <button className="gh wide" type="button" disabled={busy}
+                onClick={() => { setMode('register'); setError(''); setPassword('') }}>
+                {t('registerLink')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === 'register' && (
+          <form className="card" onSubmit={goRegister}>
+            <h1>{t('registerTitle')}</h1>
+            <label>{t('regName')}
+              <input value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+            </label>
+            <label>{t('regLogin')}
+              <input value={regLogin} autoComplete="username" onChange={(e) => setRegLogin(e.target.value)} />
+            </label>
+            <label>{t('regEmail')}
+              <input type="email" value={email} autoComplete="email" onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            <label>{t('regPassword')}
+              <input type="password" value={password} autoComplete="new-password"
+                onChange={(e) => setPassword(e.target.value)} />
+            </label>
+            {error && <p className="err" role="alert">{error}</p>}
+            <div className="acts">
+              <button className="pri wide" type="submit" disabled={busy}>{t('regSubmit')}</button>
+              <button className="gh wide" type="button" disabled={busy}
+                onClick={() => { setMode('login'); setError('') }}>
+                {t('loginLink')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === 'code' && (
+          <form className="card" onSubmit={goConfirm}>
+            <h1>{t('regCodeTitle')}</h1>
+            <p className="mut">{t('regCodeText', { email })}</p>
+            {devCode && <p className="mut"><small>DEV code: <b>{devCode}</b></small></p>}
+            <label>{t('regCode')}
+              <input value={code} autoFocus inputMode="numeric" autoComplete="one-time-code"
+                onChange={(e) => setCode(e.target.value)} />
+            </label>
+            {error && <p className="err" role="alert">{error}</p>}
+            <div className="acts">
+              <button className="pri wide" type="submit" disabled={busy}>{t('regConfirm')}</button>
+              <button className="gh wide" type="button" disabled={busy} onClick={goResend}>{t('regResend')}</button>
+              <button className="gh wide" type="button" disabled={busy}
+                onClick={() => { setMode('register'); setError(''); setCode('') }}>
+                {t('loginLink')}
+              </button>
+            </div>
+          </form>
+        )}
       </main>
     </div>
   )
@@ -71,7 +184,7 @@ export function LoginScreen({ onDone }: { onDone: (u: { name: string; email: str
 
 export function ProfileSheet(props: { profile: Profile; onLogout: () => void; onClose: () => void }) {
   const { profile, onLogout, onClose } = props
-  const { t, currency, calc, theme, csv, set, err, date } = useI18n()
+  const { t, currency, calc, theme, set, err, date } = useI18n()
   const { data, failed, retry, opH, opN } = useRates()
   const [error, setError] = useState<unknown>(null)
 
@@ -86,28 +199,6 @@ export function ProfileSheet(props: { profile: Profile; onLogout: () => void; on
 
   // Экспорт в CSV: формат выбирается в профиле — Excel (Россия): «;» и запятая, международный: «,» и точка.
   // Значения, начинающиеся с «=», «+», «-», «@», получают апостроф, чтобы Excel не выполнил их как формулу.
-  const exportCsv = async () => {
-    try {
-      const [ops, cats] = await Promise.all([api<Operation[]>('/operations'), api<Category[]>('/categories')])
-      const cat = (id: number) => cats.find((c) => c.id === id)?.name ?? ''
-      const sep = csv === 'ru' ? ';' : ','
-      const safe = (v: string) => (/^[=+\-@\t\r]/.test(v) ? "'" + v : v)
-      const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
-      const num = (n: number) => { const s = String(Math.round(n * 100) / 100); return csv === 'ru' ? s.replace('.', ',') : s }
-      const rows = [
-        [t('date'), t('type'), t('name'), t('category'), t('amount'), t('ccy'), t('budgetAtDate'), t('budgetNow'), t('note')],
-        ...ops.map((o) => [o.date, o.type === 'i' ? t('incomeOne') : t('expenseOne'), safe(o.name), safe(cat(o.category_id)),
-          num(o.amount), o.currency, num(opH(o)), num(opN(o)), safe(o.note)]),
-      ]
-      const blob = new Blob(['\uFEFF' + rows.map((r) => r.map(q).join(sep)).join('\n')], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = 'operations.csv'; a.click()
-      URL.revokeObjectURL(url)
-      setError(null)
-    } catch (e) { setError(e) }
-  }
-
   return (
     <>
       <div className="bd" onClick={onClose} />
@@ -135,13 +226,8 @@ export function ProfileSheet(props: { profile: Profile; onLogout: () => void; on
         <Seg<Theme> value={theme} onChange={(v) => set({ theme: v })} label={t('theme')}
           options={[['auto', t('themeAuto')], ['light', t('themeLight')], ['dark', t('themeDark')]]} />
 
-        <label>{t('csvFormat')}</label>
-        <Seg<Csv> value={csv} onChange={(v) => set({ csv: v })} label={t('csvFormat')}
-          options={[['ru', t('csvRu')], ['intl', t('csvIntl')]]} />
-
         {error != null && <p className="err" role="alert">{err(error)}</p>}
         <div className="acts col">
-          <button className="gh" onClick={exportCsv}>{t('exportCsv')}</button>
           <button className="gh danger" onClick={onLogout}>{t('logout')}</button>
         </div>
       </aside>

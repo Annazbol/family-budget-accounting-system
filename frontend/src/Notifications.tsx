@@ -3,6 +3,7 @@ import { useCollection } from './data'
 import { useI18n } from './i18n'
 import { useRates } from './rates'
 import { Warn } from './RatesBanner'
+import { remainingToPay } from './shared/loanMath'
 import { Debt, Goal, Loan, TabId } from './types'
 
 export interface Notice {
@@ -18,10 +19,10 @@ export interface Notice {
 
 const iso = (d: Date) => d.toLocaleDateString('sv')
 const today = () => iso(new Date())
-const nextPay = (day: number) => {
-  const n = new Date(), mk = (k: number) => new Date(n.getFullYear(), n.getMonth() + k, Math.min(day, 28))
-  let d = mk(0)
-  if (iso(d) < today()) d = mk(1)
+const loanEnd = (start: string, months: number) => {
+  const d = new Date(start + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return start
+  d.setMonth(d.getMonth() + Math.max(0, Math.floor(Number(months) || 0)))
   return iso(d)
 }
 
@@ -41,11 +42,12 @@ export function useNotices(): Notice[] {
     const all: Notice[] = [
       ...debts.map((d): Notice => ({ id: `debts:${d.id}:${d.due}`, tab: 'debts', hl: `debts:${d.id}`,
         title: d.direction === 'owe' ? t('repayDebt') : t('owedToYou'), text: d.note, amount: nowV(d.amount, d.currency), warn: !canConv(d.currency), date: d.due })),
-      ...loans.filter((l) => l.current > 0).map((l): Notice => {
-        const dt = nextPay(l.day)
+      ...loans.map((l): Notice => {
+        const dt = loanEnd(l.start_date, l.term_months)
+        const rest = remainingToPay(Number(l.amount), Number(l.rate), Number(l.term_months), Number(l.paid))
         return { id: `loans:${l.id}:${dt}`, tab: 'loans', hl: `loans:${l.id}`, title: t('loanPayment'), text: l.name,
-          amount: nowV(l.payment, l.currency), warn: !canConv(l.currency), date: dt }
-      }),
+          amount: nowV(rest, l.currency), warn: !canConv(l.currency), date: dt }
+      }).filter((n) => n.amount > 0.01),
       ...goals.filter((g) => g.saved < g.target).map((g): Notice => ({ id: `goals:${g.id}:${g.due}`, tab: 'goals', hl: `goals:${g.id}`,
         title: t('goalDeadline'), text: g.name, amount: nowV(g.target - g.saved, g.currency), warn: !canConv(g.currency), date: g.due })),
     ]

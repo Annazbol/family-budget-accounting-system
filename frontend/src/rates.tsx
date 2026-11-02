@@ -20,7 +20,12 @@ function readCache(): RatesData | null {
 }
 const writeCache = (d: RatesData) => { try { localStorage.setItem(CACHE, JSON.stringify(d)) } catch { /* ignore */ } }
 
-const cv = (n: number, a: string, b: string, r: Record<string, number>) => (a === b || !r[a] || !r[b] ? n : (n / r[a]) * r[b])
+const cv = (n: number, a: string, b: string, r: Record<string, number>) => {
+  const x = typeof n === 'number' ? n : Number(n)
+  if (!Number.isFinite(x)) return 0
+  if (a === b || !r[a] || !r[b]) return x
+  return (x / r[a]) * r[b]
+}
 
 /** Курсы на дату: ближайшая таблица не позже этой даты (для самых старых дат — самая ранняя). */
 function ratesAt(d: string, x: RatesData) {
@@ -56,7 +61,12 @@ export function RatesProvider({ children }: { children: ReactNode }) {
   const [failed, setFailed] = useState(false)
 
   const load = () => {
-    const req: Promise<unknown> = EXT ? fetch(EXT).then((r) => r.json()) : api<unknown>('/rates')
+    // 1) VITE_RATES_URL — любой URL с нашим форматом RatesData
+    // 2) иначе api('/rates') — бэкенд (живой API + кэш) или mock
+    // 3) на бэкенде курсы тянутся с open.er-api.com и обновляются по TTL
+    const req: Promise<unknown> = EXT
+      ? fetch(EXT).then((r) => { if (!r.ok) throw new Error('rates http'); return r.json() })
+      : api<unknown>('/rates')
     req.then((d) => {
       if (!isRates(d)) throw new Error('bad rates')
       const x = { ...d, history: d.history ?? {} }

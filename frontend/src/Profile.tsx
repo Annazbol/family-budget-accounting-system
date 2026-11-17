@@ -44,6 +44,7 @@ export function LoginScreen({ onDone }: { onDone: (u: { name: string; email: str
       const { user } = await login(loginTrim, password)
       onDone({ name: user.name, email: user.email })
     } catch (e) {
+      console.error('[login]', e)
       setError(errText(e))
     } finally {
       setBusy(false)

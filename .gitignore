@@ -1,0 +1,23 @@
+node_modules/
+backend/.venv/
+**/__pycache__/
+*.pyc
+
+.env
+.env.*
+!.env.example
+
+frontend/dist/
+mobile/dist/
+*.log
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+mobile/.expo/
+mobile/web-build/
+
+# Docker volume data (если вдруг лежит в репо)
+pgdata/

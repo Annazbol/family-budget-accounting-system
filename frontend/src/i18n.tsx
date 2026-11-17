@@ -120,6 +120,8 @@ const ru = {
   errLockedOp: 'Эту системную операцию нельзя редактировать или удалять.',
   errValidation: 'Проверьте правильность введённых данных.',
   errServer: 'Произошла ошибка на сервере. Попробуйте позже.',
+  errRateLimit: 'Слишком много запросов. Подождите немного и попробуйте снова.',
+  errAuth: 'Неверный логин или пароль.',
 
   profile: 'Настройки',
   currency: 'Валюта бюджета',
@@ -166,8 +168,7 @@ const ru = {
   passwordLabel: 'Пароль',
   loginRequired: 'Введите логин.',
   passwordRequired: 'Введите пароль.',
-  errAuth: 'Неверный логин или пароль.',
-  loginHint: 'Войдите по электронной почте или логину. Демо-доступ: anna / demo123',
+  loginHint: 'Войдите по электронной почте или логину.',
 
   registerTitle: 'Регистрация',
   registerLink: 'Создать аккаунт',
@@ -308,6 +309,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
       err: (e) => {
         const st = (e as { status?: number } | null)?.status ?? -1
+        const msg = (e as { message?: string } | null)?.message
 
         const k: Key =
           st === 0 ? 'errNetwork'
@@ -318,6 +320,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           : st === 400 || st === 422 ? 'errValidation'
           : 'errServer'
 
+        console.error('[err]', { status: st, message: msg, key: k, error: e })
         return ru[k]
       },
     }

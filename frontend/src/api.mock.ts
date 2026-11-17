@@ -1,4 +1,4 @@
-import type { Category, Operation, Goal, Debt, Loan, RatesData } from './types'
+import type { Category, Operation, Goal, Debt, Loan, RatesData, Currency } from './types'
 
 import { ApiError } from './apiError'
 export { ApiError }
@@ -271,6 +271,24 @@ function publicUser(u: (typeof MOCK_USERS)[number]) {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    return await mockApi<T>(path, init)
+  } catch (e) {
+    if (e instanceof ApiError) {
+      console.error('[api] mock error', {
+        path,
+        method: (init?.method ?? 'GET').toUpperCase(),
+        status: e.status,
+        message: e.message,
+      })
+    } else if ((e as Error)?.name !== 'AbortError') {
+      console.error('[api] mock error', { path, error: e })
+    }
+    throw e
+  }
+}
+
+async function mockApi<T>(path: string, init?: RequestInit): Promise<T> {
   await delay()
   if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
@@ -348,27 +366,29 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
           return c
         }
         if (colName === 'goals') {
-          const g = list[idx] as { name: string; target: number; saved: number; currency: string }
+          const g = list[idx] as unknown as Goal
           const next = Math.round((Number(g.saved) + add) * 100) / 100
           if (next > Number(g.target)) throw bad()
           const cat = ensureCat('system.goals')
+          const ccy = (g.currency || 'RUB') as Currency
           store.operations.push({
             id: store.nextId++, type: 'e', name: `goal:${id}`, amount: add,
-            currency: g.currency || 'RUB', date: todayIso, category_id: cat.id, note: g.name, locked: true,
+            currency: ccy, date: todayIso, category_id: cat.id, note: g.name, locked: true,
             source_type: 'goal', source_id: id,
-          })
-          list[idx] = { ...list[idx], saved: next }
+          });
+          (list as Goal[])[idx] = { ...g, saved: next };
         } else {
-          const l = list[idx] as { name: string; amount: number; paid: number; currency: string }
+          const l = list[idx] as unknown as Loan
           const next = Math.round((Number(l.paid) + add) * 100) / 100
           if (next > Number(l.amount) * 3) throw bad()
           const cat = ensureCat('system.loans')
+          const ccy = (l.currency || 'RUB') as Currency
           store.operations.push({
             id: store.nextId++, type: 'e', name: `loan:${id}`, amount: add,
-            currency: l.currency || 'RUB', date: todayIso, category_id: cat.id, note: l.name, locked: true,
+            currency: ccy, date: todayIso, category_id: cat.id, note: l.name, locked: true,
             source_type: 'loan', source_id: id,
-          })
-          list[idx] = { ...list[idx], paid: next }
+          });
+          (list as Loan[])[idx] = { ...l, paid: next };
         }
         saveStore(store)
         return list[idx] as T
@@ -406,9 +426,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const data = SCHEMAS[col](body ?? {}) // как на сервере: 422 приходит раньше, чем 404
     const idx = list.findIndex((x) => x.id === id)
     if (idx < 0) throw new ApiError(404, 'not found')
-    if (col === 'operations' && (list[idx] as { locked?: boolean }).locked) throw new ApiError(409, 'integrity')
+    if (col === 'operations' && (list[idx] as unknown as Operation).locked) throw new ApiError(409, 'integrity')
     checkRules(col, data, list[idx])
-    list[idx] = { ...data, id, locked: !!(list[idx] as { locked?: boolean }).locked } // PUT заменяет запись целиком
+    list[idx] = { ...data, id, locked: !!(list[idx] as unknown as Operation).locked } as (typeof list)[number] // PUT заменяет запись целиком
     saveStore(store)
     return list[idx] as T
   }
@@ -416,7 +436,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (method === 'DELETE' && id !== null) {
     const idx = list.findIndex((x) => x.id === id)
     if (idx < 0) throw new ApiError(404, 'not found')
-    if (col === 'operations' && (list[idx] as { locked?: boolean }).locked) throw new ApiError(409, 'integrity')
+    if (col === 'operations' && (list[idx] as unknown as Operation).locked) throw new ApiError(409, 'integrity')
     // Категорию с операциями удалить нельзя (ondelete="RESTRICT" в базе).
     if (col === 'categories' && store.operations.some((o) => o.category_id === id)) throw new ApiError(409, 'integrity')
     list.splice(idx, 1)

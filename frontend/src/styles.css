@@ -640,6 +640,41 @@ textarea {
   }
 }
 
+
+/* ----- Экран входа / регистрации: карточка по центру ----- */
+#app:has(> main:only-child) {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+#app > main:only-child {
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+  display: block;
+}
+
+#app > main:only-child .card {
+  width: 100%;
+}
+
+@media (min-width: 900px) {
+  #app:has(> main:only-child) {
+    display: flex;
+    grid-template-columns: none;
+  }
+
+  #app > main:only-child {
+    grid-column: auto;
+    max-width: 420px;
+  }
+}
+
 /* ----- Desktop (≥900px) ----- */
 @media (min-width: 900px) {
   #app {
@@ -677,7 +712,8 @@ textarea {
 
   #app > main:only-child {
     grid-column: 1 / -1;
-    max-width: 460px;
+    max-width: 420px;
+    margin-inline: auto;
   }
 
   .bar {

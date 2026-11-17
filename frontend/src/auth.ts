@@ -4,21 +4,25 @@ import { ApiError } from './apiError'
 const TOKEN_KEY = 'fb.token'
 const USER_KEY = 'fb.user'
 
-/** sessionStorage: не переживает закрытие браузера; меньше, чем localStorage, для XSS-эксфильтрации. */
+/** localStorage: сессия сохраняется после закрытия браузера (до истечения JWT / logout). */
 const store = {
   get(key: string): string | null {
-    try { return sessionStorage.getItem(key) ?? localStorage.getItem(key) } catch { return null }
+    try {
+      return localStorage.getItem(key) ?? sessionStorage.getItem(key)
+    } catch {
+      return null
+    }
   },
   set(key: string, val: string) {
     try {
-      sessionStorage.setItem(key, val)
-      localStorage.removeItem(key) // не держим токен в localStorage
+      localStorage.setItem(key, val)
+      sessionStorage.removeItem(key) // убираем старую sessionStorage-сессию
     } catch { /* ignore */ }
   },
   remove(key: string) {
     try {
-      sessionStorage.removeItem(key)
       localStorage.removeItem(key)
+      sessionStorage.removeItem(key)
     } catch { /* ignore */ }
   },
 }
@@ -53,8 +57,6 @@ export function clearSession(): void {
 }
 
 function saveSession(token: string, user: AuthUser) {
-  // token в sessionStorage как запасной Bearer (мобилка / без cookie);
-  // на вебе с proxy cookie тоже работает
   store.set(TOKEN_KEY, token)
   store.set(USER_KEY, JSON.stringify(user))
 }

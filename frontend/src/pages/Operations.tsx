@@ -50,7 +50,7 @@ export function Operations() {
           ccyField(t('ccy')),
           { key: 'date', label: t('date'), type: 'date' },
           { key: 'category_id', label: t('category'), type: 'select', numeric: true, emptyHint: t('noCatsOfType'),
-            options: (f) => cats.filter((c) => c.type === f.type).map((c) => ({ value: c.id, label: c.name })) },
+            options: (f) => cats.filter((c) => c.type === f.type).map((c) => ({ value: c.id, label: categoryLabel(c.name, t) })) },
           { key: 'note', label: t('note'), type: 'text', required: false, maxLength: 255 },
         ]}
         check={(f) => {
@@ -101,7 +101,7 @@ export function Operations() {
           <Resource<Category> path="/categories" addLabel={t('addCategory')} empty={t('noCategories')}
             defaults={{ type: 'e', name: '' }}
             fields={[{ key: 'type', label: t('type'), type: 'select', options: kinds }, { key: 'name', label: t('catName'), type: 'text', maxLength: 100 }]}
-            row={(c) => <><b>{c.name}</b> <span className="mut">{c.type === 'i' ? t('incomeShort') : t('expenseShort')}</span></>} />
+            row={(c) => <><b>{categoryLabel(c.name, t)}</b> <span className="mut">{c.type === 'i' ? t('incomeShort') : t('expenseShort')}</span></>} />
           <div className="acts"><button className="gh wide" onClick={() => setShowCats(false)}>{t('close')}</button></div>
         </Modal>
       )}

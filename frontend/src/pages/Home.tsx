@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { useRates } from '../rates'
 import { Warn } from '../RatesBanner'
 import { PeriodPicker, periodQuery, usePeriod } from '../shared/period'
+import { categoryLabel } from '../shared/labels'
 import { Category, Kind, Total } from '../types'
 
 // Итоги приходят с сервера уже сгруппированными (тип, валюта, дата, категория), а пересчёт в валюту бюджета — на клиенте.
@@ -22,6 +23,11 @@ export function Home() {
   const error = all.error ?? per.error ?? cats.error
   const warnPer = per.data.some((r) => !canOp(r))
 
+  const catName = (id: number) => {
+    const n = cats.data.find((c) => c.id === id)?.name
+    return n ? categoryLabel(n, t) : '—'
+  }
+
   return (
     <>
       <div className="bar"><PeriodPicker p={pr} /></div>
@@ -39,7 +45,7 @@ export function Home() {
           <div className="card"><h3>{t('byCategory')}</h3>
             {rows.length === 0 && <p className="mut">{t('noExpenses')}</p>}
             {rows.map(([id, v]) => (
-              <div className="li" key={id}><span>{cats.data.find((c) => c.id === id)?.name ?? '—'}</span><b>{money(v)}</b></div>
+              <div className="li" key={id}><span>{catName(id)}</span><b>{money(v)}</b></div>
             ))}
           </div>
         </>

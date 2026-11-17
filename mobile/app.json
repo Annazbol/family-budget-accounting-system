@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Family Budget",
+    "slug": "family-budget-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1D4E5F"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1D4E5F"
+      },
+      "usesCleartextTraffic": true
+    },
+    "extra": {
+      "apiUrl": "http://localhost:8000"
+    },
+    "plugins": []
+  }
+}

@@ -19,7 +19,10 @@ from typing import Any, Optional
 
 import httpx
 
+import json
+
 from app.config import get_settings
+from app.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +107,22 @@ def _build_history(current: dict[str, float], day: str) -> dict[str, dict[str, f
 
 
 def get_rates_data(*, force: bool = False) -> dict[str, Any]:
-    """Актуальные курсы (база RUB) с серверным кэшем."""
+    """Актуальные курсы (база RUB): Redis → память → провайдер."""
     global _cache, _cache_at
 
     settings = get_settings()
     ttl = max(60, int(settings.rates_cache_seconds))
+    rkey = "rates:latest"
+
+    if not force:
+        r = get_redis()
+        if r is not None:
+            try:
+                raw = r.get(rkey)
+                if raw:
+                    return json.loads(raw)
+            except Exception as e:
+                logger.warning("rates redis get: %s", e)
 
     with _lock:
         now = time.monotonic()
@@ -126,7 +140,6 @@ def get_rates_data(*, force: bool = False) -> dict[str, Any]:
             _cache = payload
             _cache_at = now
             logger.info("rates: updated from provider (RUB), date=%s", day)
-            return payload
         except Exception as e:
             logger.warning("rates: fetch failed: %s", e)
             if _cache is not None:
@@ -140,4 +153,11 @@ def get_rates_data(*, force: bool = False) -> dict[str, Any]:
             }
             _cache = payload
             _cache_at = now
-            return payload
+
+        r = get_redis()
+        if r is not None:
+            try:
+                r.setex(rkey, ttl, json.dumps(payload))
+            except Exception as e:
+                logger.warning("rates redis set: %s", e)
+        return payload

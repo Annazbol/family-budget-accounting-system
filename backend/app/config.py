@@ -5,7 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # переменные окружения (Docker Compose) важнее файла .env
+    )
 
     # development | production
     app_env: str = "development"
@@ -16,7 +21,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production"
     jwt_expire_minutes: int = 60 * 24 * 7
 
-    cors_origins: str = "http://localhost:5173,http://localhost:8080"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080"
 
     rates_url: str = "https://open.er-api.com/v6/latest/RUB"
     rates_cache_seconds: int = 30 * 60

@@ -13,6 +13,8 @@ COPY app ./app
 COPY sql ./sql
 
 ENV PYTHONUNBUFFERED=1
+ENV DATABASE_URL=postgresql+psycopg://budget:budget@db:5432/budget
+ENV REDIS_URL=redis://redis:6379/0
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
